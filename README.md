@@ -119,3 +119,60 @@ func main() {
 	http.ListenAndServe(":1337", nil)
 }
 ```
+
+## Design patterns
+
+Here are some ideas for how to use interfaces and handlers. These examples skip the bootstrapping code for the sake
+of brevity.
+
+### Identification
+
+This will require the users to identify themselves before letting them chat with each other. The chat client can
+leave out the `Name` field in their `Chat` messages, as it will be replaced with the name provided in the `Ident`
+message before being broadcasted.
+
+```go
+type Chat struct {
+    Name string
+    Text string
+}
+
+type Ident struct {
+    Name string
+}
+
+func (e *Example) IdentifyHandler(i *geomys.Interface, msg interface{}) error {
+    if ident, ok := msg.(*Ident); ok {
+        if ident.Name == "" {
+            i.Close()
+            return errors.New("Client did not provide a name")
+        }
+        // Remember the user's ident.
+        i.Context = ident
+        // Relinquish control to the broadcast handler.
+        i.PopHandler()
+        return nil
+    } else {
+        return errors.New("Expected an Ident message")
+    }
+}
+
+func (e *Example) BroadcastHandler(i *geomys.Interface, msg interface{}) error {
+    if chat, ok := msg.(*Chat); ok {
+        // Fill in the name in the chat message.
+        chat.Name = i.Context.(*Ident).Name
+        e.Server.SendAll(chat)
+        return nil
+    } else {
+        return errors.New("Expected a Chat message")
+    }
+}
+
+func (e *Example) GetInterface(ws *websocket.Conn) *geomys.Interface {
+    i := e.Server.NewInterface(nil)
+    i.PushHandler(e.BroadcastHandler)
+    // This handler will have control first, identifying the user.
+    i.PushHandler(e.IdentifyHandler)
+    return i
+}
+```
