@@ -7,6 +7,35 @@ A super simple framework for writing servers handling many persistent clients.
 go get github.com/blixt/geomys
 ```
 
+## Concepts
+
+### Message
+
+A simple typed data structure (a simple Go struct / JSON object).
+
+### Handler
+
+A function which handles a message coming from the client. The handler has access to the interface and may send a
+message back to the client using the `Send` method.
+
+### Interface
+
+An interface between clients and the server. Usually there will be one `Interface` instance per client. The
+interface holds a stack of one or more handlers which handle the incoming messages from the client.
+
+The handler that is on the top of the stack will handle incoming messages. It may replace itself (`ReplaceHandler`),
+relinquish handling to the previous handler (`PopHandler`) or give control to another handler (`PushHandler`) which
+can then choose what to do with its control.
+
+The rationale behind this setup is to let the server move clients between states without having to create one large
+state machine. For example, if the client needs to authenticate itself, the server can push an auth handler which
+can then pop itself when authentication has been completed.
+
+### Server
+
+A very simple wrapper for a list of `Interface` instances, allowing sending to all interfaces simultaneously and 
+cleaning up when an interface has been closed.
+
 ## WebSocket support
 
 This library is built with the web in mind, so it makes WebSocket connections easier. It uses a simple protocol for
