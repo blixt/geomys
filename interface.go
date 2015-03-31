@@ -12,18 +12,20 @@ func defaultHandler(i *Interface, msg interface{}) error {
 }
 
 type Interface struct {
-	Context  interface{}
-	handlers []Handler
-	open     bool
-	channel  chan interface{}
+	Context    interface{}
+	channel    chan interface{}
+	curHandler int
+	handlers   []Handler
+	open       bool
 }
 
 func NewInterface(context interface{}) *Interface {
 	return &Interface{
-		Context:  context,
-		handlers: []Handler{defaultHandler},
-		open:     true,
-		channel:  make(chan interface{}, 10),
+		Context:    context,
+		channel:    make(chan interface{}, 10),
+		curHandler: -1,
+		handlers:   []Handler{defaultHandler},
+		open:       true,
 	}
 }
 
@@ -43,7 +45,18 @@ func (i *Interface) Handle(msg interface{}) error {
 	if !i.open {
 		return errors.New("The interface is closed")
 	}
-	return i.handlers[len(i.handlers)-1](i, msg)
+	i.curHandler = len(i.handlers) - 1
+	err := i.handlers[i.curHandler](i, msg)
+	i.curHandler = -1
+	return err
+}
+
+func (i *Interface) Passthrough(msg interface{}) error {
+	if i.curHandler < 1 {
+		return errors.New("Cannot pass through")
+	}
+	i.curHandler--
+	return i.handlers[i.curHandler](i, msg)
 }
 
 func (i *Interface) PopHandler() {
