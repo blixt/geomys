@@ -142,30 +142,32 @@ type Ident struct {
 }
 
 func (e *Example) IdentifyHandler(i *geomys.Interface, msg interface{}) error {
-    if ident, ok := msg.(*Ident); ok {
-        if ident.Name == "" {
+    switch msg := msg.(type) {
+    case *Ident:
+        if msg.Name == "" {
             i.Close()
             return errors.New("Client did not provide a name")
         }
         // Remember the user's ident.
-        i.Context = ident
+        i.Context = msg
         // Relinquish control to the broadcast handler.
         i.PopHandler()
-        return nil
-    } else {
+    default:
         return errors.New("Expected an Ident message")
     }
+    return nil
 }
 
 func (e *Example) BroadcastHandler(i *geomys.Interface, msg interface{}) error {
-    if chat, ok := msg.(*Chat); ok {
+    switch msg := msg.(type) {
+    case *Chat:
         // Fill in the name in the chat message.
-        chat.Name = i.Context.(*Ident).Name
-        e.Server.SendAll(chat)
-        return nil
-    } else {
+        msg.Name = i.Context.(*Ident).Name
+        e.Server.SendAll(msg)
+    default:
         return errors.New("Expected a Chat message")
     }
+    return nil
 }
 
 func (e *Example) GetInterface(ws *websocket.Conn) *geomys.Interface {
