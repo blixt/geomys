@@ -14,6 +14,12 @@ func (s *Server) NewInterface(context interface{}) *Interface {
 	return i
 }
 
+func (s *Server) DispatchAll(event *Event) {
+	for _, i := range s.Interfaces {
+		i.Dispatch(event.Copy())
+	}
+}
+
 func (s *Server) SendAll(msg interface{}) {
 	count, deleted := len(s.Interfaces), 0
 	for index, i := range s.Interfaces {

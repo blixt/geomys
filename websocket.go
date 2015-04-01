@@ -103,7 +103,7 @@ func receiveToInterface(s WebSocketServer, ws *websocket.Conn, i *Interface) {
 			break
 		} else {
 			Logger.Debug("Received message %T", msg)
-			if err := i.Handle(msg); err != nil {
+			if err := i.Dispatch(NewEvent("message", msg)); err != nil {
 				Logger.Warning("Client caused error: %s", err)
 			}
 		}

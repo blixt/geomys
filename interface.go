@@ -4,28 +4,22 @@ import (
 	"errors"
 )
 
-type Handler func(i *Interface, msg interface{}) error
-
-// Default handler.
-func defaultHandler(i *Interface, msg interface{}) error {
-	return errors.New("There was no handler for the message")
-}
+type Handler func(i *Interface, event *Event) error
 
 type Interface struct {
-	Context    interface{}
-	channel    chan interface{}
-	curHandler int
-	handlers   []Handler
-	open       bool
+	Context  interface{}
+	channel  chan interface{}
+	handlers []Handler
+	index    int
+	open     bool
 }
 
 func NewInterface(context interface{}) *Interface {
 	return &Interface{
-		Context:    context,
-		channel:    make(chan interface{}, 10),
-		curHandler: -1,
-		handlers:   []Handler{defaultHandler},
-		open:       true,
+		Context: context,
+		channel: make(chan interface{}, 10),
+		index:   -1,
+		open:    true,
 	}
 }
 
@@ -40,39 +34,35 @@ func (i *Interface) Get() interface{} {
 	return <-i.channel
 }
 
-// Handles a message from the client.
-func (i *Interface) Handle(msg interface{}) error {
+// Handles an event.
+func (i *Interface) Dispatch(event *Event) error {
 	if !i.open {
 		return errors.New("The interface is closed")
 	}
-	i.curHandler = len(i.handlers) - 1
-	err := i.handlers[i.curHandler](i, msg)
-	i.curHandler = -1
+	var err error
+	for i.index = len(i.handlers) - 1; i.index >= 0; i.index-- {
+		err = i.handlers[i.index](i, event)
+		if err != nil || event.stopped {
+			break
+		}
+	}
+	i.index = -1
 	return err
-}
-
-func (i *Interface) Passthrough(msg interface{}) error {
-	if i.curHandler < 1 {
-		return errors.New("Cannot pass through")
-	}
-	i.curHandler--
-	return i.handlers[i.curHandler](i, msg)
-}
-
-func (i *Interface) PopHandler() {
-	if len(i.handlers) < 2 {
-		panic("Cannot pop root handler")
-	}
-	i.handlers[len(i.handlers)-1] = nil
-	i.handlers = i.handlers[:len(i.handlers)-1]
 }
 
 func (i *Interface) PushHandler(h Handler) {
 	i.handlers = append(i.handlers, h)
 }
 
-func (i *Interface) ReplaceHandler(h Handler) {
-	i.handlers[len(i.handlers)-1] = h
+// Removes the current handler. Note: This can only be called from a handler.
+func (i *Interface) RemoveHandler() {
+	if i.index < 0 {
+		panic("RemoveHandler can only be called within a handler")
+	}
+	copy(i.handlers[i.index:], i.handlers[i.index+1:])
+	lastIndex := len(i.handlers) - 1
+	i.handlers[lastIndex] = nil
+	i.handlers = i.handlers[:lastIndex]
 }
 
 // Sends a message to the client.

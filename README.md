@@ -1,5 +1,5 @@
 # geomys
-A super simple framework for writing servers handling many persistent clients.
+A simple framework for writing servers handling many persistent clients.
 
 ## Installation
 
@@ -13,27 +13,29 @@ go get github.com/blixt/geomys
 
 A simple typed data structure (a simple Go struct / JSON object).
 
-### Handler
-
-A function which handles a message coming from the client. The handler has access to the interface and may send a
-message back to the client using the `Send` method.
-
 ### Interface
 
 An interface between clients and the server. Usually there will be one `Interface` instance per client. The
-interface holds a stack of one or more handlers which handle the incoming messages from the client.
+interface holds a stack of one or more handlers which handle events such as incoming messages from the client. The
+handlers may send messages back to the client using the interface's `Send` method.
 
-The handler that is on the top of the stack will handle incoming messages. It may replace itself (`ReplaceHandler`),
-relinquish handling to the previous handler (`PopHandler`) or give control to another handler (`PushHandler`) which
-can then choose what to do with its control.
+The interface also has a `Context` field which can be set to any value. This can for example be set to a session
+object representing the user that the interface communicates with.
 
-The rationale behind this setup is to let the server move clients between states without having to create one large
-state machine. For example, if the client needs to authenticate itself, the server can push an auth handler which
-can then pop itself when authentication has been completed.
+### Handler
+
+A function which handles an event, such as a message coming from the client. The handler has access to the interface
+and may send a message to the client using the `Send` method or dispatch more events with the `Dispatch` method.
+
+### Event
+
+An event that can be handled by a handler. The event will bubble through the handlers unless stopped by calling the
+`StopPropagation` method or returning an error in a handler. By default there is only the `"message"` event which is
+dispatched whenever a client sends a message.
 
 ### Server
 
-A very simple wrapper for a list of `Interface` instances, allowing sending to all interfaces simultaneously and 
+A very simple wrapper for a list of `Interface` instances, allowing sending to all interfaces simultaneously and
 cleaning up when an interface has been closed.
 
 ## WebSocket support
@@ -78,16 +80,14 @@ type Example struct {
 	Server *geomys.Server
 }
 
-func NewExample() *Example {
-	return &Example{Server: geomys.NewServer()}
-}
-
-// A handler which we'll add to all incoming clients.
-func (e *Example) BroadcastHandler(i *geomys.Interface, msg interface{}) error {
-	// Broadcast the message to all interfaces.
-	e.Server.SendAll(msg)
-	// Acknowledge that the message was received.
-	i.Send(&Acknowledgement{})
+// Our simple handler for all connected clients.
+func (e *Example) BroadcastHandler(i *geomys.Interface, event *geomys.Event) error {
+	if event.Type == "message" {
+		// Broadcast the message to all interfaces.
+		e.Server.SendAll(event.Value)
+		// Acknowledge that the message was received.
+		i.Send(&Acknowledgement{})
+	}
 	return nil
 }
 
@@ -110,11 +110,11 @@ func (e *Example) GetMessage(msgType string) (interface{}, error) {
 }
 
 func main() {
-	// Our Example type implements geomys.WebSocketServer.
-	example := NewExample()
+	example := &Example{Server: geomys.NewServer()}
 
 	// Start the WebSocket server.
 	fmt.Println("Starting server on port 1337...")
+	// Example implements geomys.WebSocketServer which makes web sockets easy.
 	http.Handle("/socket", geomys.WebSocketHandler(example))
 	http.ListenAndServe(":1337", nil)
 }
@@ -141,8 +141,8 @@ type Ident struct {
     Name string
 }
 
-func (e *Example) IdentifyHandler(i *geomys.Interface, msg interface{}) error {
-    switch msg := msg.(type) {
+func (e *Example) IdentifyHandler(i *geomys.Interface, event *geomys.Event) error {
+    switch msg := event.Value.(type) {
     case *Ident:
         if msg.Name == "" {
             i.Close()
@@ -150,16 +150,18 @@ func (e *Example) IdentifyHandler(i *geomys.Interface, msg interface{}) error {
         }
         // Remember the user's ident.
         i.Context = msg
-        // Relinquish control to the broadcast handler.
-        i.PopHandler()
+        // Stop looking for ident messages.
+        i.RemoveHandler()
+	// Prevent this event from bubbling to the broadcast handler.
+	event.StopPropagation()
     default:
         return errors.New("Expected an Ident message")
     }
     return nil
 }
 
-func (e *Example) BroadcastHandler(i *geomys.Interface, msg interface{}) error {
-    switch msg := msg.(type) {
+func (e *Example) BroadcastHandler(i *geomys.Interface, event *geomys.Event) error {
+    switch msg := event.Value.(type) {
     case *Chat:
         // Fill in the name in the chat message.
         msg.Name = i.Context.(*Ident).Name
