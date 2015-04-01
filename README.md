@@ -23,34 +23,29 @@ import (
     "golang.org/x/net/websocket"
 )
 
-type Acknowledgement struct {
-}
-
 type Chat struct {
     Text string
 }
 
-// The example implementation of the server.
 type Example struct {
     geomys.WebSocketServerBase
     Server *geomys.Server
 }
 
-// Our simple handler for all connected clients.
+// The handler for all connected clients.
 func (e *Example) BroadcastHandler(i *geomys.Interface, event *geomys.Event) error {
     if event.Type == "message" {
         // Broadcast the message to all interfaces.
         e.Server.SendAll(event.Value)
-        // Acknowledge that the message was received.
-        i.Send(&Acknowledgement{})
     }
     return nil
 }
 
 // Handles an incoming socket by returning an interface to the server.
 func (e *Example) GetInterface(ws *websocket.Conn) *geomys.Interface {
+    // We pass in nil as the context here, but it can be anything you want.
     i := e.Server.NewInterface(nil)
-    // Handle all connections with our broadcast handler.
+    // Handle all client messages with the broadcast handler.
     i.PushHandler(e.BroadcastHandler)
     return i
 }
@@ -68,7 +63,6 @@ func (e *Example) GetMessage(msgType string) (interface{}, error) {
 func main() {
     example := &Example{Server: geomys.NewServer()}
 
-    // Start the WebSocket server.
     fmt.Println("Starting server on port 1337...")
     // Example implements geomys.WebSocketServer which makes web sockets easy.
     http.Handle("/socket", geomys.WebSocketHandler(example))
