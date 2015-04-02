@@ -105,6 +105,9 @@ func receiveToInterface(s WebSocketServer, ws *websocket.Conn, i *Interface) {
 			Logger.Debug("Received message %T", msg)
 			if err := i.Dispatch(NewEvent("message", msg)); err != nil {
 				Logger.Warning("Client caused error: %s", err)
+				if err := i.Dispatch(NewEvent("error", err)); err != nil {
+					Logger.Error("Error event ALSO caused error: %s", err)
+				}
 			}
 		}
 	}
