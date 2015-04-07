@@ -24,6 +24,9 @@ func NewInterface(context interface{}) *Interface {
 }
 
 func (i *Interface) Close() {
+	for _, h := range i.handlers {
+		h(i, NewEvent("close", nil))
+	}
 	i.handlers = nil
 	i.open = false
 	close(i.channel)
